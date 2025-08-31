@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>日報アプリ（開始/終了時間・新種別対応・住所整形・クリアボタン付き）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root { --space:12px; --radius:10px; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif; background:#fff; color:#111; }
+    header { position: sticky; top: 0; padding: 12px; background:#fff; border-bottom:1px solid #eee; }
+    header .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    main { padding: 12px; padding-bottom: 80px; }
+    label { display:block; margin-bottom:6px; font-size:14px; color:#333; }
+    input[type="text"], input[type="date"], textarea, select, input[type="number"] {
+      width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:16px;
+    }
+    textarea { resize: vertical; }
+    .table { width:100%; border-collapse: collapse; margin-top: 10px; }
+    .table th, .table td { padding:10px; border-bottom:1px solid #eee; vertical-align: top; }
+    .table th { text-align:left; position: sticky; top: 52px; background:#fff; z-index: 1; }
+    .table tr:nth-child(odd){ background:#fafafa; }
+    .muted { color:#666; font-size: 13px; }
+    .footerbar {
+      position: sticky; bottom: 0; background:#fff; border-top:1px solid #eee;
+      padding:8px; display:flex; gap:8px; justify-content:space-between; align-items:center;
+    }
+    button { border:1px solid #ddd; background:#f7f7f7; border-radius:10px; padding:10px 12px; font-size:15px; cursor:pointer; }
+    button.primary { border:none; background:#111; color:#fff; padding:12px 14px; font-size:16px; }
+    button.small { padding:6px 10px; font-size:14px; border-radius:8px; }
+    .row { display:flex; gap:10px; }
+    .grow { flex:1; }
+    .status { font-size:13px; color:#555; margin-top:6px; min-height: 1.2em; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size:12px; background:#f0f0f0; }
+    .btns { display:flex; gap:8px; flex-wrap: wrap; }
+    .input-with-btn { display:flex; gap:8px; align-items:center; }
+    .input-with-btn .grow { flex:1; }
+
+    /* 走行距離計エリア */
+    .meter-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .meter-row { display:flex; gap:10px; align-items:center; }
+    .meter-row .unit { white-space:nowrap; color:#555; }
+    .meter-note { margin-top:6px; }
+    @media (max-width:640px){ .meter-grid { grid-template-columns: 1fr; } }
+
+    /* 時刻入力エリア */
+    .time-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .time-row { display:flex; gap:8px; align-items:center; }
+    @media (max-width:640px){ .time-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <strong>日報</strong>
+      <span class="pill">開始/終了時間 & 新種別／住所整形・編集・走行距離</span>
+      <div class="grow"></div>
+      <div>
+        <label for="datePicker" class="muted" style="margin-bottom:4px;">日付</label>
+        <input type="date" id="datePicker">
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 走行距離（A,B,C） -->
+    <section>
+      <label>走行距離（メーター）</label>
+      <div class="meter-grid">
+        <div>
+          <label for="meterA" class="muted">A：出勤時のメーター走行距離</label>
+          <div class="meter-row">
+            <input id="meterA" type="number" inputmode="decimal" step="0.1"><span class="unit">km</span>
+          </div>
+        </div>
+        <div>
+          <label for="meterB" class="muted">B：退勤時のメーター走行距離</label>
+          <div class="meter-row">
+            <input id="meterB" type="number" inputmode="decimal" step="0.1"><span class="unit">km</span>
+          </div>
+        </div>
+        <div>
+          <label for="meterC" class="muted">C：本日の走行距離</label>
+          <div class="meter-row">
+            <input id="meterC" type="number" inputmode="decimal" step="0.1"><span class="unit">km</span>
+          </div>
+        </div>
+        <div>
+          <label class="muted">計算設定</label>
+          <div class="meter-row">
+            <input id="autoCalc" type="checkbox" checked>
+            <label for="autoCalc">C = B − A を自動計算</label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 種別 -->
+    <section style="margin-top:16px">
+      <label for="typeSelect">種別（任意）</label>
+      <select id="typeSelect">
+        <option value="">未選択（空欄で記録）</option>
+        <option value="出勤">出勤</option>
+        <option value="退勤">退勤</option>
+        <option value="納品">納品</option>
+        <option value="引取り">引取り</option>
+        <option value="助手">助手</option>
+        <option value="休憩">休憩</option>
+      </select>
+    </section>
+
+    <!-- 開始/終了時間 -->
+    <section style="margin-top:16px" class="time-grid">
+      <div>
+        <label for="startTime" class="muted">開始時間</label>
+        <div class="time-row">
+          <input id="startTime" type="text" placeholder="例：2025年08月31日 09:00:00">
+          <button id="btnNowStart" class="small" type="button">開始時刻を取得</button>
+          <button id="btnClearStart" class="small" type="button" title="開始時間をクリア">クリア</button>
+        </div>
+      </div>
+      <div>
+        <label for="endTime" class="muted">終了時間</label>
+        <div class="time-row">
+          <input id="endTime" type="text" placeholder="例：2025年08月31日 18:00:00">
+          <button id="btnNowEnd" class="small" type="button">終了時刻を取得</button>
+          <button id="btnClearEnd" class="small" type="button" title="終了時間をクリア">クリア</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 住所 -->
+    <section style="margin-top:16px">
+      <label for="addr">住所</label>
+      <div class="input-with-btn">
+        <input id="addr" class="grow" type="text" placeholder="例：東京都 新宿区 西新宿一丁目">
+        <button id="btnAddrClear" class="small" type="button">クリア</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnLocate" type="button">位置情報を取得</button>
+        <span id="locStatus" class="status"></span>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        ※ 自動取得時は「県（都道府県） 市区町村 丁目」の順で表示します（丁目が取得できない場合は県＋市区町村のみ）。
+      </div>
+    </section>
+
+    <!-- メモ -->
+    <section style="margin-top:16px">
+      <label for="memo">メモ</label>
+      <textarea id="memo" rows="3" placeholder="作業内容・所感など"></textarea>
+    </section>
+
+    <!-- 一覧 -->
+    <section style="margin-top:16px">
+      <table class="table" id="logTable">
+        <thead>
+          <tr>
+            <th style="width:200px;">開始</th>
+            <th style="width:200px;">終了</th>
+            <th style="width:120px;">種別</th>
+            <th>住所</th>
+            <th>メモ</th>
+            <th style="width:180px;">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <div class="footerbar">
+    <button id="btnAdd" class="primary" type="button">記録</button>
+  </div>
+
+  <script>
+    // ===== 基本ユーティリティ =====
+    const pad = n=> String(n).padStart(2,'0');
+    const fmtYmd = d=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const fmtKey = d=> `nippou:${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+    const fmtTimestamp = d=> `${d.getFullYear()}年${pad(d.getMonth()+1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const uid = ()=> `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+    const toNum = v=> { const n=parseFloat(v); return isNaN(n)?null:n; };
+
+    // ===== 住所整形（県・市区町村・丁目） =====
+    function formatPrefCityChome(address){
+      if(!address || typeof address !== 'object') return null;
+      // 県（都道府県）
+      const pref = address.state || address.province || address.region || "";
+      // 市区町村（優先順：city → city_district/ward → town → village → municipality → county）
+      const municipality =
+        address.city || address.city_district || address.town || address.village ||
+        address.municipality || address.county || "";
+      // 丁目候補（neighbourhood / suburb / quarter / hamlet / road などから「〜丁目」を抽出）
+      const chomeCandidates = [
+        address.neighbourhood, address.suburb, address.quarter, address.hamlet, address.village, address.road
+      ].filter(Boolean);
+      let chome = "";
+      for (const c of chomeCandidates){
+        const s = String(c);
+        const m = s.match(/[^0-9]*\d+丁目/); // 例: 西新宿一丁目 / 霞ヶ関三丁目
+        if (m) { chome = m[0]; break; }
+        if (s.endsWith("丁目")) { chome = s; break; }
+      }
+      const parts = [pref, municipality, chome].filter(x => x && x.trim().length>0);
+      if (parts.length === 0) return null;
+      return parts.join(" ").replace(/\s{2,}/g," ").trim();
+    }
+
+    // ===== State =====
+    let currentDate=new Date(), currentKey=fmtKey(currentDate);
+    let currentState={
+      rows:[],
+      memoDraft:"", addrDraft:"", typeDraft:"", startDraft:"", endDraft:"",
+      meter:{a:"",b:"",c:"",autoCalc:true}
+    };
+    let editingId=null;
+
+    // ===== Load/Save =====
+    const loadState=key=>{
+      const raw=localStorage.getItem(key);
+      if(!raw) return JSON.parse(JSON.stringify(currentState));
+      const parsed = JSON.parse(raw);
+      // 旧データ互換（行に time がある場合 → startTime へ）
+      if (Array.isArray(parsed.rows)) {
+        parsed.rows = parsed.rows.map(r=>{
+          if (r.time && !r.startTime && !r.endTime){
+            return { id:r.id||uid(), startTime:r.time, endTime:"", type:r.type||"", addr:r.addr||"", memo:r.memo||"" };
+          }
+          return r;
+        });
+      }
+      return {...currentState, ...parsed};
+    };
+    const saveState=()=> localStorage.setItem(currentKey, JSON.stringify(currentState));
+
+    // ===== DOMContentLoaded =====
+    window.addEventListener("DOMContentLoaded", ()=>{
+      // DOM参照
+      const datePicker=document.getElementById("datePicker");
+      const typeSelect=document.getElementById("typeSelect");
+      const memoEl=document.getElementById("memo");
+      const addrEl=document.getElementById("addr");
+      const btnAddrClear=document.getElementById("btnAddrClear");
+      const tableBody=document.querySelector("#logTable tbody");
+      const locStatus=document.getElementById("locStatus");
+      const startTimeEl=document.getElementById("startTime");
+      const endTimeEl=document.getElementById("endTime");
+      const btnNowStart=document.getElementById("btnNowStart");
+      const btnNowEnd=document.getElementById("btnNowEnd");
+      const btnClearStart=document.getElementById("btnClearStart");
+      const btnClearEnd=document.getElementById("btnClearEnd");
+      const btnAdd=document.getElementById("btnAdd");
+      const btnLocate=document.getElementById("btnLocate");
+      const meterAEl=document.getElementById("meterA");
+      const meterBEl=document.getElementById("meterB");
+      const meterCEl=document.getElementById("meterC");
+      const autoCalcEl=document.getElementById("autoCalc");
+
+      currentState=loadState(currentKey);
+      datePicker.value=fmtYmd(currentDate);
+
+      // ===== テーブル描画 =====
+      function renderTable(){
+        tableBody.innerHTML="";
+        for(const row of currentState.rows){
+          const tr=document.createElement("tr");
+          const tdStart=document.createElement("td"); tdStart.textContent=row.startTime||"";
+          const tdEnd=document.createElement("td"); tdEnd.textContent=row.endTime||"";
+          const tdType=document.createElement("td"); tdType.textContent=row.type||"";
+          const tdAddr=document.createElement("td"); tdAddr.textContent=row.addr||"";
+          const tdMemo=document.createElement("td"); tdMemo.textContent=row.memo||"";
+          const tdAct=document.createElement("td");
+          // 編集・削除（簡易：削除のみ／編集は必要なら復活可能）
+          const btnDel=document.createElement("button"); btnDel.className="small"; btnDel.textContent="削除";
+          btnDel.onclick=()=>{ if(confirm("この記録を削除しますか？")){ currentState.rows=currentState.rows.filter(r=>r.id!==row.id); saveState(); renderTable(); } };
+          tdAct.appendChild(btnDel);
+
+          tr.appendChild(tdStart); tr.appendChild(tdEnd); tr.appendChild(tdType);
+          tr.appendChild(tdAddr);  tr.appendChild(tdMemo); tr.appendChild(tdAct);
+          tableBody.appendChild(tr);
+        }
+      }
+
+      // 初期レンダリング
+      (function renderAll(){
+        memoEl.value = currentState.memoDraft || "";
+        addrEl.value = currentState.addrDraft || "";
+        typeSelect.value = currentState.typeDraft || "";
+        startTimeEl.value = currentState.startDraft || "";
+        endTimeEl.value = currentState.endDraft || "";
+        // meter
+        meterAEl.value=currentState.meter.a||"";
+        meterBEl.value=currentState.meter.b||"";
+        meterCEl.value=currentState.meter.c||"";
+        autoCalcEl.checked=!!currentState.meter.autoCalc;
+        meterCEl.disabled=!!currentState.meter.autoCalc;
+        renderTable();
+      })();
+
+      // ===== 入力オートセーブ =====
+      let memoTimer=null, addrTimer=null, meterTimer=null, timeTimer=null;
+      memoEl.addEventListener('input', ()=>{ clearTimeout(memoTimer); memoTimer=setTimeout(()=>{ currentState.memoDraft=memoEl.value; saveState(); },250); });
+      addrEl.addEventListener('input',  ()=>{ clearTimeout(addrTimer); addrTimer=setTimeout(()=>{ currentState.addrDraft=addrEl.value; saveState(); },250); });
+      typeSelect.addEventListener('change', ()=>{ currentState.typeDraft=typeSelect.value; saveState(); });
+
+      startTimeEl.addEventListener('input', ()=>{ clearTimeout(timeTimer); timeTimer=setTimeout(()=>{ currentState.startDraft=startTimeEl.value; saveState(); },200); });
+      endTimeEl.addEventListener('input',   ()=>{ clearTimeout(timeTimer); timeTimer=setTimeout(()=>{ currentState.endDraft=endTimeEl.value;   saveState(); },200); });
+
+      // ===== 時刻 取得／クリア =====
+      btnNowStart.addEventListener('click', ()=>{ const now=fmtTimestamp(new Date()); startTimeEl.value=now; currentState.startDraft=now; saveState(); });
+      btnNowEnd.addEventListener('click',   ()=>{ const now=fmtTimestamp(new Date()); endTimeEl.value=now;   currentState.endDraft=now;   saveState(); });
+      btnClearStart.addEventListener('click', ()=>{ startTimeEl.value=""; currentState.startDraft=""; saveState(); });
+      btnClearEnd.addEventListener('click',   ()=>{ endTimeEl.value="";   currentState.endDraft="";   saveState(); });
+
+      // ===== 走行距離 =====
+      function recalcIfNeeded(){
+        if(!currentState.meter.autoCalc) return;
+        const a=toNum(currentState.meter.a), b=toNum(currentState.meter.b);
+        if(a==null || b==null) return;
+        const c=Math.round((b-a)*10)/10;
+        currentState.meter.c=String(c);
+        meterCEl.value=currentState.meter.c;
+      }
+      function handleMeterChange(){
+        clearTimeout(meterTimer);
+        meterTimer=setTimeout(()=>{
+          currentState.meter.a=meterAEl.value;
+          currentState.meter.b=meterBEl.value;
+          if(currentState.meter.autoCalc){ recalcIfNeeded(); }
+          saveState();
+        },200);
+      }
+      meterAEl.addEventListener('input', handleMeterChange);
+      meterBEl.addEventListener('input', handleMeterChange);
+      meterCEl.addEventListener('input', ()=>{ clearTimeout(meterTimer); meterTimer=setTimeout(()=>{ currentState.meter.c=meterCEl.value; saveState(); },200); });
+      autoCalcEl.addEventListener('change', ()=>{
+        currentState.meter.autoCalc=autoCalcEl.checked;
+        meterCEl.disabled=autoCalcEl.checked;
+        if (autoCalcEl.checked) recalcIfNeeded();
+        saveState();
+      });
+
+      // ===== 日付切替 =====
+      datePicker.addEventListener('change', ()=>{
+        const d=new Date(datePicker.value+"T00:00:00");
+        if(isNaN(d)) return;
+        // 保存
+        currentState.memoDraft=memoEl.value;
+        currentState.addrDraft=addrEl.value;
+        currentState.typeDraft=typeSelect.value;
+        currentState.startDraft=startTimeEl.value;
+        currentState.endDraft=endTimeEl.value;
+        currentState.meter.a=meterAEl.value;
+        currentState.meter.b=meterBEl.value;
+        currentState.meter.c=meterCEl.value;
+        currentState.meter.autoCalc=autoCalcEl.checked;
+        saveState();
+        // 読込
+        currentDate=d; currentKey=fmtKey(d);
+        currentState=loadState(currentKey);
+        // 再描画
+        memoEl.value=currentState.memoDraft||"";
+        addrEl.value=currentState.addrDraft||"";
+        typeSelect.value=currentState.typeDraft||"";
+        startTimeEl.value=currentState.startDraft||"";
+        endTimeEl.value=currentState.endDraft||"";
+        meterAEl.value=currentState.meter.a||"";
+        meterBEl.value=currentState.meter.b||"";
+        meterCEl.value=currentState.meter.c||"";
+        autoCalcEl.checked=!!currentState.meter.autoCalc;
+        meterCEl.disabled=!!currentState.meter.autoCalc;
+        renderTable();
+      });
+
+      // ===== 記録（行追加） =====
+      btnAdd.addEventListener('click', ()=>{
+        const row={
+          id: uid(),
+          startTime: (startTimeEl.value||"").trim(),
+          endTime:   (endTimeEl.value||"").trim(),
+          type:      typeSelect.value||"",
+          addr:      (addrEl.value||"").trim(),
+          memo:      (memoEl.value||"").trim()
+        };
+        currentState.rows.unshift(row);
+        memoEl.value=""; currentState.memoDraft="";
+        saveState(); renderTable();
+      });
+
+      // ===== 住所：取得／クリア =====
+      btnAddrClear.addEventListener('click', ()=>{ addrEl.value=""; currentState.addrDraft=""; saveState(); });
+
+      btnLocate.addEventListener('click', ()=>{
+        locStatus.textContent="位置情報を取得しています…";
+        if(!navigator.geolocation){ locStatus.textContent="この端末では位置情報が利用できません。"; return; }
+        navigator.geolocation.getCurrentPosition(async (pos)=>{
+          const { latitude:lat, longitude:lon } = pos.coords;
+          try{
+            const url=`https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&accept-language=ja`;
+            const res=await fetch(url, { headers:{ "Accept":"application/json" }});
+            if(!res.ok) throw new Error("reverse geocode failed");
+            const data=await res.json();
+            // 県・市区町村・丁目で表示
+            const formatted = formatPrefCityChome(data.address);
+            const display = formatted || data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            addrEl.value = display;
+            currentState.addrDraft = display;
+            saveState();
+            locStatus.textContent="住所を取得しました。";
+          }catch(e){
+            addrEl.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            currentState.addrDraft = addrEl.value;
+            saveState();
+            locStatus.textContent="住所の推定に失敗。緯度経度を入力しました。";
+          }
+        }, (err)=>{ console.warn(err); locStatus.textContent="位置取得に失敗しました。"; }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+      });
+    });
+  </script>
+</body>
+</html>
